@@ -24,6 +24,7 @@
 module.exports = function (RED) {
     "use strict";
     var rfxcom = require("rfxcom");
+    var rfy;
 
 // Set the rfxcom debug option from the environment variable
     var debugOption = {};
@@ -63,6 +64,7 @@ module.exports = function (RED) {
                 var rfxtrx;
                 if (!pool[port]) {
                     rfxtrx = new rfxcom.RfxCom(port, options || debugOption);
+                    rfy = new rfxcom.Rfy(rfxtrx, rfxcom.rfy.RFY);
                     rfxtrx.transmitters = {};
                     rfxtrx.on("connecting", function () {
                         node.log("connecting to " + port);
@@ -1251,5 +1253,57 @@ module.exports = function (RED) {
     }
 
     RED.nodes.registerType("rfx-doorbell-out", RfxDoorbellOutNode);
+
+// An output node for sending messages to somfy
+    function RfxSomfyOutNode(n) {
+        RED.nodes.createNode(this, n);
+        this.port = n.port;
+        this.topicSource = n.topicSource || "msg";
+        this.topic = stringToParts(n.topic);
+        this.name = n.name;
+        this.rfxtrxPort = RED.nodes.getNode(this.port);
+
+        var node = this;
+
+        // Generate the chime command depending on the subtype and tone parameter, if any
+        var parseCommand = function (protocolName, address, str) {
+            var sound = NaN;
+            if (str != undefined) {
+                sound = parseInt(str);
+            }
+            try {
+                if (protocolName == 'BYRON_SX' && !isNaN(sound)) {
+                    node.rfxtrx.transmitters[protocolName].tx.chime(address, sound);
+                } else {
+                    node.rfxtrx.transmitters[protocolName].tx.chime(address);
+                }
+            } catch (exception) {
+                node.warn(exception);
+            }
+        };
+        
+        if (node.rfxtrxPort) {
+            node.rfxtrx = rfxcomPool.get(node, node.rfxtrxPort.port);
+            if (node.rfxtrx !== null) {
+//                rfy = new rfxcom.Rfy(node.rfxtrx, rfxcom.rfy.RFY);
+                showConnectionStatus(node);
+                node.on("close", function () {
+                    releasePort(node);
+                });
+                node.on("input", function (msg) {
+                    // Get the device address from the node topic, or the message topic if the node topic is undefined;
+                    // parse the device command from the message payload; and send the appropriate command to the address
+
+                    rfy.do(msg.topic, msg.payload, function(err, res, sequenceNum) {
+                        if (!err) console.log('complete');
+                    });
+                });
+            }
+        } else {
+            node.error("missing config: rfxtrx-port");
+        }
+    }
+
+    RED.nodes.registerType("rfx-somfy-out", RfxSomfyOutNode);
 
 };
