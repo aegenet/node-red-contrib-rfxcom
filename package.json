@@ -22,6 +22,6 @@
     }
   },
   "dependencies": {
-    "rfxcom": "gizimoto/node-rfxcom"
+    "rfxcom": "averelll/node-rfxcom"
   }
 }
